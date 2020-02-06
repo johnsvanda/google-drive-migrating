@@ -88,6 +88,7 @@ function copyFolder(oldParent, newParent, auth) {
   var pageToken = null;
   async.doWhilst(
     function(callback) {
+      // Folders
       drive.files.list(
         {
           q: `mimeType = 'application/vnd.google-apps.folder' and ('${oldParent}' in parents)`, // viewedByMeTime > '2020-02-05T14:00:00'
@@ -101,11 +102,11 @@ function copyFolder(oldParent, newParent, auth) {
             console.error(err);
             callback(err);
           } else {
-            res.data.files.forEach(function(file) {
-              console.log("Found folder: ", file.id, file.name);
+            res.data.files.forEach(function(folder) {
+              console.log("Found folder: ", folder.id, folder.name);
 
               var fileMetadata = {
-                name: file.name,
+                name: folder.name,
                 mimeType: "application/vnd.google-apps.folder",
                 parents: [newParent]
               };
@@ -120,9 +121,11 @@ function copyFolder(oldParent, newParent, auth) {
                     console.error(err);
                   } else {
                     console.log(
-                      "Creating copy of file: " + JSON.stringify(res.data.name)
+                      "Creating copy of folder: " +
+                        JSON.stringify(res.data.name)
                     );
-                    copyFolder(file.id, res.data.id, auth);
+                    copyFile(folder.id, res.data.id, drive);
+                    copyFolder(folder.id, res.data.id, auth);
                   }
                 }
               );
@@ -142,6 +145,47 @@ function copyFolder(oldParent, newParent, auth) {
         console.error(err);
       } else {
         // All pages fetched
+      }
+    }
+  );
+}
+
+function copyFile(oldParent, newParent, drive) {
+  // Finding file
+  var pageToken = null;
+  drive.files.list(
+    {
+      q: `mimeType != 'application/vnd.google-apps.folder' and ('${oldParent}' in parents)`, // viewedByMeTime > '2020-02-05T14:00:00'
+      fields: "nextPageToken, files(id, name, parents)",
+      spaces: "drive",
+      pageToken: pageToken
+    },
+    function(err, res) {
+      if (err) {
+        console.error(err);
+      } else {
+        res.data.files.forEach(function(file) {
+          console.log("Found file: ", file.id, file.name, file.parents);
+
+          // Moving file
+          var previousParents = file.parents.join(",");
+          drive.files.update(
+            {
+              fileId: file.id,
+              addParents: newParent,
+              removeParents: previousParents,
+              fields: "id, parents"
+            },
+            function(err, file) {
+              if (err) {
+                // Handle error
+              } else {
+                // File moved.
+                console.log("File moved.");
+              }
+            }
+          );
+        });
       }
     }
   );
