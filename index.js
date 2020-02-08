@@ -75,17 +75,18 @@ function getAccessToken(oAuth2Client, callback) {
  * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
  */
 function listFiles(auth) {
-  copyFolder(
-    "1zahClNLyNypeoD0y1mqFcklGFAz48SX6", // Folder to copy from
-    "1_VT6jD3SGlM8qn_B_sFgGlz95snYLc9M", // Folder to paste into
-    auth
-  );
+  const copy = "1zahClNLyNypeoD0y1mqFcklGFAz48SX6"; // Folder to copy from
+  const paste = "1_VT6jD3SGlM8qn_B_sFgGlz95snYLc9M"; // Folder to paste into
+  var pageToken = null;
+  const drive = google.drive({ version: "v3", auth });
+
+  copyFolder(copy, paste, drive, pageToken);
+  copyFile(copy, paste, drive, pageToken);
 }
 
-function copyFolder(oldParent, newParent, auth) {
+function copyFolder(oldParent, newParent, drive, pageToken) {
   // Condition for ending the loop
-  const drive = google.drive({ version: "v3", auth });
-  var pageToken = null;
+
   async.doWhilst(
     function(callback) {
       // Folders
@@ -124,8 +125,8 @@ function copyFolder(oldParent, newParent, auth) {
                       "Creating copy of folder: " +
                         JSON.stringify(res.data.name)
                     );
-                    copyFile(folder.id, res.data.id, drive);
-                    copyFolder(folder.id, res.data.id, auth);
+                    copyFile(folder.id, res.data.id, drive, pageToken);
+                    copyFolder(folder.id, res.data.id, drive, pageToken);
                   }
                 }
               );
@@ -150,12 +151,12 @@ function copyFolder(oldParent, newParent, auth) {
   );
 }
 
-function copyFile(oldParent, newParent, drive) {
+function copyFile(oldParent, newParent, drive, pageToken) {
   // Finding file
   var pageToken = null;
   drive.files.list(
     {
-      q: `mimeType != 'application/vnd.google-apps.folder' and ('${oldParent}' in parents)`, // viewedByMeTime > '2020-02-05T14:00:00'
+      q: `mimeType != 'application/vnd.google-apps.folder' and ('${oldParent}' in parents)`, //and (viewedByMeTime > '2020-02-07T14:00:00')
       fields: "nextPageToken, files(id, name, parents)",
       spaces: "drive",
       pageToken: pageToken

@@ -1,0 +1,3 @@
+Nevytvářet již vytvořené složky
+Vyzkoušet přenos přístupových práv (sdílení), zůstává zachováno ?
+Kolik operací mě google nechá udělat, timeoutování ?
