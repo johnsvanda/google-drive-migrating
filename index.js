@@ -81,19 +81,17 @@ function listFiles(auth) {
   const drive = google.drive({ version: "v3", auth });
 
   copyFolder(copy, paste, drive, pageToken);
-  copyFile(copy, paste, drive, pageToken);
+  moveFile(copy, paste, drive, pageToken);
 }
 
 function copyFolder(oldParent, newParent, drive, pageToken) {
-  // Condition for ending the loop
-
   async.doWhilst(
     function(callback) {
       // Folders
       drive.files.list(
         {
-          q: `mimeType = 'application/vnd.google-apps.folder' and ('${oldParent}' in parents)`, // viewedByMeTime > '2020-02-05T14:00:00'
-          fields: "nextPageToken, files(id, name)",
+          q: `mimeType = 'application/vnd.google-apps.folder' and '${oldParent}' in parents and trashed = false`, // viewedByMeTime > '2020-02-05T14:00:00'
+          fields: "nextPageToken, files(id, name, permissions)",
           spaces: "drive",
           pageToken: pageToken
         },
@@ -103,30 +101,72 @@ function copyFolder(oldParent, newParent, drive, pageToken) {
             console.error(err);
             callback(err);
           } else {
-            res.data.files.forEach(function(folder) {
-              console.log("Found folder: ", folder.id, folder.name);
+            res.data.files.forEach(function(oldFolder) {
+              console.log(
+                "Found folder: ",
+                oldFolder.id,
+                oldFolder.name,
+                oldFolder.permissions
+              );
 
-              var fileMetadata = {
-                name: folder.name,
-                mimeType: "application/vnd.google-apps.folder",
-                parents: [newParent]
-              };
-
-              drive.files.create(
+              drive.files.list(
                 {
-                  resource: fileMetadata,
-                  fields: "id, name"
+                  q: `mimeType = 'application/vnd.google-apps.folder' and '${newParent}' in parents and name = '${oldFolder.name}' and trashed = false`,
+                  fields: "nextPageToken, files(id, name)",
+                  spaces: "drive",
+                  pageToken: pageToken
                 },
                 function(err, res) {
                   if (err) {
-                    console.error(err);
+                    // This step never happens
+                  } else if (res.data.files.length !== 0) {
+                    // If folder exists continue searching what's changed
+                    res.data.files.forEach(function(createdFolder) {
+                      moveFile(
+                        oldFolder.id,
+                        createdFolder.id,
+                        drive,
+                        pageToken
+                      );
+                      copyFolder(
+                        oldFolder.id,
+                        createdFolder.id,
+                        drive,
+                        pageToken
+                      );
+                    });
                   } else {
-                    console.log(
-                      "Creating copy of folder: " +
-                        JSON.stringify(res.data.name)
+                    // If folder doesn't exists create new folder
+                    var fileMetadata = {
+                      name: oldFolder.name,
+                      permissions: oldFolder.permissions[1],
+                      mimeType: "application/vnd.google-apps.folder",
+                      parents: [newParent]
+                    };
+
+                    drive.files.create(
+                      {
+                        resource: fileMetadata,
+                        fields: "id, name"
+                      },
+                      function(err, res) {
+                        if (err) {
+                          console.error(err);
+                        } else {
+                          console.log(
+                            "Creating copy of folder: " +
+                              JSON.stringify(res.data.name)
+                          );
+                          moveFile(oldFolder.id, res.data.id, drive, pageToken);
+                          copyFolder(
+                            oldFolder.id,
+                            res.data.id,
+                            drive,
+                            pageToken
+                          );
+                        }
+                      }
                     );
-                    copyFile(folder.id, res.data.id, drive, pageToken);
-                    copyFolder(folder.id, res.data.id, drive, pageToken);
                   }
                 }
               );
@@ -151,12 +191,12 @@ function copyFolder(oldParent, newParent, drive, pageToken) {
   );
 }
 
-function copyFile(oldParent, newParent, drive, pageToken) {
+function moveFile(oldParent, newParent, drive, pageToken) {
   // Finding file
   var pageToken = null;
   drive.files.list(
     {
-      q: `mimeType != 'application/vnd.google-apps.folder' and ('${oldParent}' in parents)`, //and (viewedByMeTime > '2020-02-07T14:00:00')
+      q: `mimeType != 'application/vnd.google-apps.folder' and '${oldParent}' in parents and trashed = false`, //and (viewedByMeTime > '2020-02-07T14:00:00')
       fields: "nextPageToken, files(id, name, parents)",
       spaces: "drive",
       pageToken: pageToken
