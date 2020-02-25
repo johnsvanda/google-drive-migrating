@@ -87,7 +87,7 @@ function listFiles(auth) {
 function copyFolder(oldParent, newParent, drive, pageToken) {
   async.doWhilst(
     function(callback) {
-      // Folders
+      // Find folders that exists
       drive.files.list(
         {
           q: `mimeType = 'application/vnd.google-apps.folder' and '${oldParent}' in parents and trashed = false`, // viewedByMeTime > '2020-02-05T14:00:00'
@@ -97,7 +97,6 @@ function copyFolder(oldParent, newParent, drive, pageToken) {
         },
         function(err, res) {
           if (err) {
-            // Handle error
             console.error(err);
             callback(err);
           } else {
@@ -108,7 +107,7 @@ function copyFolder(oldParent, newParent, drive, pageToken) {
                 oldFolder.name,
                 oldFolder.permissions
               );
-
+              // Prevent creating duplicate folders
               drive.files.list(
                 {
                   q: `mimeType = 'application/vnd.google-apps.folder' and '${newParent}' in parents and name = '${oldFolder.name}' and trashed = false`,
@@ -139,7 +138,6 @@ function copyFolder(oldParent, newParent, drive, pageToken) {
                     // If folder doesn't exists create new folder
                     var fileMetadata = {
                       name: oldFolder.name,
-                      permissions: oldFolder.permissions[1],
                       mimeType: "application/vnd.google-apps.folder",
                       parents: [newParent]
                     };
@@ -157,6 +155,56 @@ function copyFolder(oldParent, newParent, drive, pageToken) {
                             "Creating copy of folder: " +
                               JSON.stringify(res.data.name)
                           );
+                          // Copy permissons, shared users
+                          async.eachSeries(
+                            oldFolder.permissions,
+                            function(permission, permissionCallback) {
+                              drive.permissions.create(
+                                {
+                                  fileId: res.data.id,
+                                  fields: "id",
+                                  sendNotificationEmail: false,
+                                  resource: {
+                                    role: "writer",
+                                    type: permission.type,
+                                    emailAddress: permission.emailAddress
+                                  }
+                                },
+                                function(err, res) {
+                                  if (err) {
+                                    // Handle error...
+                                    console.error(err);
+                                    permissionCallback(err);
+                                  } else {
+                                    console.log("Permissons transfered.");
+                                    permissionCallback();
+                                  }
+                                }
+                              );
+                            },
+                            function(err) {
+                              if (err) {
+                                // Handle error
+                                console.error(err);
+                              } else {
+                                // All permissions inserted
+                              }
+                            }
+                          );
+
+                          /*     oldFolder.permissions.forEach(function(permission) {
+                            drive.permissions.create({
+                              fileId: res.data.id,
+                              transferOwnership: true,
+                              resource: {
+                                role: permission.role,
+                                type: permission.type,
+                                emailAddress: permission.emailAddress
+                              }
+                            });
+
+                          }); */
+
                           moveFile(oldFolder.id, res.data.id, drive, pageToken);
                           copyFolder(
                             oldFolder.id,
